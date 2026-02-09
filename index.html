@@ -1,47 +1,66 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RICOH Web Scanner Pro</title>
 
-  <link rel="stylesheet" href="styles.css">
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
 
   <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("service-worker.js");
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
     }
   </script>
 </head>
-
 <body>
+  <header>
+    <h1>RICOH Web Scanner Pro</h1>
+  </header>
 
-<header>
-  <h1>RICOH Web Scanner Pro</h1>
-</header>
+  <div class="toolbar">
+    <!-- ✨ NIEUW: spelernaam -->
+    <input id="playerName" type="text" class="input"
+           placeholder="Naam speler (optioneel)" autocomplete="off" />
 
-<div class="buttons">
-  <button id="startScan">Start Scannen</button>
-  <button id="downloadBtn">Download CSV</button>
-</div>
+    <button id="startScan">Start scannen</button>
+    <button id="resetBtn" class="secondary">Reset</button>
+    <button id="flashToggle" class="secondary">Zaklamp: uit</button>
+    <button id="downloadBtn">Download CSV</button>
 
-<video id="camera" autoplay playsinline></video>
+    <div class="cloud-group">
+      <button id="uploadOneDrive" class="cloud">Upload → OneDrive/SharePoint</button>
+      <button id="uploadGDrive" class="cloud">Upload → Google Drive</button>
+    </div>
+  </div>
 
-<table id="results">
-  <thead>
-    <tr>
-      <th>Tijd</th>
-      <th>MAC-adres</th>
-      <th>Serienummer</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
+  <div class="video-wrap">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div id="toast" class="toast">Gescand</div>
+    <div id="statusLight" class="status red"></div>
+  </div>
 
-<script src="fallback-qr.js"></script>
-<script src="quagga.min.js"></script>
-<script src="scanner.js"></script>
+  <div class="progress-wrap">
+    <div class="progress indeterminate" id="scanProgress"></div>
+  </div>
 
+  <table id="results">
+    <thead>
+      <tr>
+        <th>Tijd</th>
+        <th>Speler</th><!-- ✨ NIEUW -->
+        <th>MAC-adres</th>
+        <th>Serienummer</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="scanner.js"></script>
 </body>
 </html>
