@@ -1,43 +1,46 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RICOH Web Scanner Pro</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RICOH Web Scanner Pro</title>
 
-    <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('service-worker.js');
-        }
-    </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js");
+    }
+  </script>
 </head>
+
 <body>
 
 <header>
-    <h1>RICOH Web Scanner Pro</h1>
+  <h1>RICOH Web Scanner Pro</h1>
 </header>
 
-<section class="buttons">
-    <button id="startScan">Start Scannen</button>
-    <button id="download">Download CSV</button>
-</section>
+<div class="buttons">
+  <button id="startScan">Start Scannen</button>
+  <button id="downloadBtn">Download CSV</button>
+</div>
 
-<video id="camera" playsinline></video>
+<video id="camera" autoplay playsinline></video>
 
 <table id="results">
-    <thead>
-        <tr>
-            <th>Tijd</th>
-            <th>MAC-adres</th>
-            <th>Serienummer</th>
-        </tr>
-    </thead>
-    <tbody></tbody>
+  <thead>
+    <tr>
+      <th>Tijd</th>
+      <th>MAC-adres</th>
+      <th>Serienummer</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
 </table>
 
+<script src="fallback-qr.js"></script>
+<script src="quagga.min.js"></script>
 <script src="scanner.js"></script>
 
 </body>
