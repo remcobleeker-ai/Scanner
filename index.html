@@ -20,7 +20,6 @@
   </header>
 
   <div class="toolbar">
-    <!-- ✨ NIEUW: spelernaam -->
     <input id="playerName" type="text" class="input"
            placeholder="Naam speler (optioneel)" autocomplete="off" />
 
@@ -28,9 +27,10 @@
     <button id="resetBtn" class="secondary">Reset</button>
     <button id="flashToggle" class="secondary">Zaklamp: uit</button>
     <button id="downloadBtn">Download CSV</button>
+    <button id="downloadExcelBtn">Download Excel</button>
 
     <div class="cloud-group">
-      <button id="uploadOneDrive" class="cloud">Upload → OneDrive/SharePoint</button>
+      <button id="uploadOneDrive" class="cloud">Upload → OneDrive</button>
       <button id="uploadGDrive" class="cloud">Upload → Google Drive</button>
     </div>
   </div>
@@ -46,19 +46,27 @@
     <div class="progress indeterminate" id="scanProgress"></div>
   </div>
 
-  <table id="results">
-    <thead>
-      <tr>
-        <th>Tijd</th>
-        <th>Speler</th><!-- ✨ NIEUW -->
-        <th>MAC-adres</th>
-        <th>Serienummer</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div class="results-section">
+    <div class="results-header">
+      <h2>Scanresultaten</h2>
+      <span class="scan-count"><span id="scanCount">0</span> gescand</span>
+    </div>
+
+    <table id="results">
+      <thead>
+        <tr>
+          <th>Tijd</th>
+          <th>Speler</th>
+          <th>MAC-adres</th>
+          <th>Serienummer</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="scanner.js"></script>

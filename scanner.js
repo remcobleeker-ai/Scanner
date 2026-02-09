@@ -2,12 +2,12 @@
  * Config
  *********************/
 const CONFIG = {
-  enableQuaggaFallback: true, // fallback voor 1D (EAN/UPC/Code128/39)
+  enableQuaggaFallback: true,
   macRegex: /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/,
 
   cloud: {
     oneDrive: { enabled: false, clientId: "VUL_HIER_JE_AAD_APP_CLIENT_ID_IN", scopes: ["Files.ReadWrite"] },
-    gDrive:   { enabled: false } // vul API key en clientId in bij gapi.init()
+    gDrive:   { enabled: false }
   }
 };
 
@@ -20,23 +20,51 @@ const ctx = overlay.getContext("2d");
 const toast = document.getElementById("toast");
 const statusLight = document.getElementById("statusLight");
 const tableBody = document.querySelector("#results tbody");
+const scanCountEl = document.getElementById("scanCount");
 
 const startBtn = document.getElementById("startScan");
 const resetBtn = document.getElementById("resetBtn");
 const flashToggleBtn = document.getElementById("flashToggle");
 const downloadBtn = document.getElementById("downloadBtn");
+const downloadExcelBtn = document.getElementById("downloadExcelBtn");
 const uploadODBtn = document.getElementById("uploadOneDrive");
 const uploadGDBtn = document.getElementById("uploadGDrive");
-const playerNameEl = document.getElementById("playerName"); // ✨ nieuw
+const playerNameEl = document.getElementById("playerName");
 
 /**********************
  * State
  *********************/
 let stream, track, detector, useBarcodeDetector = false;
-const scannedSet = new Set();      // anti-duplicaat op barcode-string
+const scannedSet = new Set();
 let lastBox = null;
 let lastScanAt = 0;
 let torchOn = false;
+
+// Persistent data store
+let scanData = [];
+
+/**********************
+ * Persistence (localStorage)
+ *********************/
+function saveData() {
+  try {
+    localStorage.setItem("ricoh_scan_data", JSON.stringify(scanData));
+  } catch (e) {}
+}
+
+function loadData() {
+  try {
+    const stored = localStorage.getItem("ricoh_scan_data");
+    if (stored) {
+      scanData = JSON.parse(stored);
+      scanData.forEach(row => {
+        scannedSet.add(row.raw);
+        appendRowToTable(row.time, row.player, row.mac, row.serial);
+      });
+      updateScanCount();
+    }
+  } catch (e) {}
+}
 
 /**********************
  * Utils
@@ -59,6 +87,12 @@ function showToast(msg="Gescand"){
 
 function normalizeMac(mac){ return mac.trim().replace(/-/g, ":").toUpperCase(); }
 function validMac(mac){ return CONFIG.macRegex.test(mac); }
+
+function updateScanCount() {
+  if (scanCountEl) {
+    scanCountEl.textContent = scanData.length;
+  }
+}
 
 function drawOverlay(){
   const w = overlay.width = video.clientWidth;
@@ -96,7 +130,7 @@ function drawOverlay(){
   ctx.fillText("Gescand", 16, 30);
 }
 
-function addRow(time, player, mac, serial){
+function appendRowToTable(time, player, mac, serial) {
   const tr = document.createElement("tr");
   tr.innerHTML = `<td>${time}</td><td>${player}</td><td>${mac}</td><td>${serial}</td>`;
   tableBody.appendChild(tr);
@@ -106,7 +140,7 @@ function parseAndAppend(raw){
   const parts = String(raw).split(";");
   let mac = normalizeMac(parts[0] || "");
   const serial = (parts[1] || "").trim();
-  const player = playerNameEl.value.trim(); // ✨ nieuwe kolom
+  const player = playerNameEl.value.trim();
   const timestamp = new Date().toLocaleString();
 
   if (!validMac(mac)){
@@ -116,11 +150,16 @@ function parseAndAppend(raw){
     return;
   }
 
-  // anti-duplicaat: per barcode (ongeacht speler)
+  // anti-duplicaat
   if (scannedSet.has(raw)) return;
   scannedSet.add(raw);
 
-  addRow(timestamp, player, mac, serial);
+  // Add to data store
+  scanData.push({ raw, time: timestamp, player, mac, serial });
+  saveData();
+
+  appendRowToTable(timestamp, player, mac, serial);
+  updateScanCount();
   statusLight.className = "status green";
   showToast("Gescand");
   beep(880, 120, 0.18);
@@ -139,8 +178,6 @@ async function startScan(){
   await video.play();
   track = stream.getVideoTracks()[0];
 
-  // BarcodeDetector met extra formats (1D + 2D)
-  // ean_13, ean_8, upc_a, itf, pdf417, data_matrix + bestaande
   if ("BarcodeDetector" in window){
     detector = new BarcodeDetector({
       formats: ["qr_code","code_128","code_39","ean_13","ean_8","upc_a","itf","pdf417","data_matrix"]
@@ -166,10 +203,8 @@ async function scanWithDetector(){
           lastBox = { type:"rect", rect:{x:r.x, y:r.y, width:r.width, height:r.height} };
         }
         const raw = bc.rawValue.trim();
-        if (!scannedSet.has(raw)){
-          scannedSet.add(raw);
-          parseAndAppend(raw);
-        }
+        // Let parseAndAppend handle duplicate checking and data storage
+        parseAndAppend(raw);
       }
     }
   }catch(e){}
@@ -177,7 +212,6 @@ async function scanWithDetector(){
 }
 
 function startQuagga(){
-  // Fallback: 1D readers inclusief EAN/UPC/ITF
   Quagga.init({
     inputStream:{ type:"LiveStream", target: video, constraints:{ facingMode:"environment" } },
     decoder:{ readers:["code_128_reader","code_39_reader","ean_reader","ean_8_reader","upc_reader","upc_e_reader","i2of5_reader"] },
@@ -189,10 +223,8 @@ function startQuagga(){
 
   Quagga.onDetected(data => {
     const raw = data.codeResult.code.trim();
-    if (!scannedSet.has(raw)){
-      scannedSet.add(raw);
-      parseAndAppend(raw);
-    }
+    // Let parseAndAppend handle duplicate checking and data storage
+    parseAndAppend(raw);
     if (data.box && Array.isArray(data.box)){
       const pts = data.box.map(p=>[p[0],p[1]]);
       lastBox = { type:"poly", points: pts };
@@ -206,26 +238,58 @@ function startQuagga(){
  *********************/
 function resetAll(){
   scannedSet.clear();
+  scanData = [];
   lastBox = null;
   tableBody.innerHTML = "";
   statusLight.className = "status red";
   toast.classList.remove("show");
+  saveData();
+  updateScanCount();
 }
 
 function buildCSV(){
-  const rows = [...tableBody.querySelectorAll("tr")].map(tr =>
-    [...tr.children].map(td => td.innerText).join(",")
+  const header = "Tijd,Speler,MAC-adres,Serienummer";
+  const rows = scanData.map(r =>
+    [r.time, r.player, r.mac, r.serial].map(v => `"${(v||"").replace(/"/g,'""')}"`).join(",")
   );
-  return "Tijd,Speler,MAC-adres,Serienummer\n" + rows.join("\n");
+  return header + "\n" + rows.join("\n");
 }
 
 function downloadCSV(){
+  if (scanData.length === 0) { showToast("Geen data"); return; }
   const csv = buildCSV();
-  const blob = new Blob([csv], {type:"text/csv"});
+  const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "scanresultaten.csv";
   a.click();
+}
+
+/**********************
+ * Excel Export (XLSX)
+ *********************/
+function downloadExcel(){
+  if (scanData.length === 0) { showToast("Geen data"); return; }
+  if (typeof XLSX === "undefined") { alert("Excel bibliotheek wordt geladen, probeer opnieuw."); return; }
+
+  const wsData = [
+    ["Tijd", "Speler", "MAC-adres", "Serienummer"],
+    ...scanData.map(r => [r.time, r.player, r.mac, r.serial])
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Auto-size columns
+  ws["!cols"] = [
+    { wch: 22 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 20 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, "Scanresultaten");
+  XLSX.writeFile(wb, "scanresultaten.xlsx");
 }
 
 /**********************
@@ -248,7 +312,7 @@ async function toggleTorch(){
 /**********************
  * Cloud Sync (OneDrive/SharePoint)
  *********************/
-async function getCSVBlob(){ return new Blob([buildCSV()], {type:"text/csv"}); }
+async function getCSVBlob(){ return new Blob(["\uFEFF" + buildCSV()], {type:"text/csv;charset=utf-8"}); }
 
 async function uploadToOneDrive(){
   if (!CONFIG.cloud.oneDrive.enabled){ alert("OneDrive sync is uitgeschakeld in scanner.js"); return; }
@@ -306,11 +370,11 @@ async function uploadToGDrive(){
 startBtn.addEventListener("click", startScan);
 resetBtn.addEventListener("click", resetAll);
 downloadBtn.addEventListener("click", downloadCSV);
+if (downloadExcelBtn) downloadExcelBtn.addEventListener("click", downloadExcel);
 flashToggleBtn.addEventListener("click", toggleTorch);
 uploadODBtn.addEventListener("click", uploadToOneDrive);
 uploadGDBtn.addEventListener("click", uploadToGDrive);
 window.addEventListener("resize", drawOverlay);
 
-CONFIG.cloud.oneDrive.enabled = true;
-CONFIG.cloud.oneDrive.clientId = "JOUW-CLIENT-ID";
-``
+// Load persisted data on startup
+loadData();
