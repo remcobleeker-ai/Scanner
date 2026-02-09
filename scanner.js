@@ -3,6 +3,9 @@ const startBtn = document.getElementById("startScan");
 const downloadBtn = document.getElementById("downloadBtn");
 const tableBody = document.querySelector("#results tbody");
 
+// set met reeds gescande codes (voorkomt duplicaten)
+const scannedSet = new Set();
+
 let useBarcodeDetector = false;
 let detector;
 
@@ -26,12 +29,23 @@ startBtn.onclick = async () => {
 async function scanBarcodeDetector() {
   try {
     const barcodes = await detector.detect(video);
-    barcodes.forEach(bc => parseResult(bc.rawValue));
+
+    barcodes.forEach(bc => {
+      const raw = bc.rawValue.trim();
+
+      // check op duplicaat
+      if (scannedSet.has(raw)) return;
+
+      scannedSet.add(raw);
+      parseResult(raw);
+    });
+
   } catch (e) {}
 
   requestAnimationFrame(scanBarcodeDetector);
 }
 
+// verwerkt MAC + Serial
 function parseResult(data) {
   const parts = data.split(";");
   const mac = parts[0] || "";
@@ -60,6 +74,7 @@ downloadBtn.onclick = () => {
   a.click();
 };
 
+// fallback voor 1D barcodes (Quagga)
 function startQuagga() {
   Quagga.init({
     inputStream: {
@@ -73,6 +88,12 @@ function startQuagga() {
   });
 
   Quagga.onDetected(data => {
-    parseResult(data.codeResult.code);
+    const raw = data.codeResult.code.trim();
+
+    // check op duplicaat
+    if (scannedSet.has(raw)) return;
+
+    scannedSet.add(raw);
+    parseResult(raw);
   });
 }
