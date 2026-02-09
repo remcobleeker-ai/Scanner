@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RICOH Web Scanner Pro</title>
+
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js');
+        }
+    </script>
+</head>
+<body>
+
+<header>
+    <h1>RICOH Web Scanner Pro</h1>
+</header>
+
+<section class="buttons">
+    <button id="startScan">Start Scannen</button>
+    <button id="download">Download CSV</button>
+</section>
+
+<video id="camera" playsinline></video>
+
+<table id="results">
+    <thead>
+        <tr>
+            <th>Tijd</th>
+            <th>MAC-adres</th>
+            <th>Serienummer</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script src="scanner.js"></script>
+
+</body>
+</html>
