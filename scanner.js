@@ -310,3 +310,7 @@ flashToggleBtn.addEventListener("click", toggleTorch);
 uploadODBtn.addEventListener("click", uploadToOneDrive);
 uploadGDBtn.addEventListener("click", uploadToGDrive);
 window.addEventListener("resize", drawOverlay);
+
+CONFIG.cloud.oneDrive.enabled = true;
+CONFIG.cloud.oneDrive.clientId = "JOUW-CLIENT-ID";
+``
