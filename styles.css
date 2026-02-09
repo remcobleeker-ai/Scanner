@@ -39,3 +39,11 @@ td, th {
   border: 1px solid #ccc;
   padding: 8px;
 }
+.input{
+  min-width:220px;
+  padding:10px 12px;
+  border:1px solid #ccc;
+  border-radius:6px;
+  font-size:16px;
+}
+.input:focus{ outline:2px solid #CE0000; outline-offset:1px; }
