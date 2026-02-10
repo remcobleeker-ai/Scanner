@@ -1,75 +1,80 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#CE0000" />
   <title>RICOH Web Scanner Pro</title>
 
-  manifest.json
-  styles.css
-
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("service-worker.js");
-      });
-    }
-  </script>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icon-192.png" sizes="192x192" />
+  <link rel="icon" href="./icon-512.png" sizes="512x512" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <header>
     <h1>RICOH Web Scanner Pro</h1>
   </header>
 
-  <div class="toolbar">
-    <input id="playerName" type="text" class="input" placeholder="Naam speler (optioneel)" autocomplete="off" />
+  <section class="toolbar">
+    <input id="playerName" class="input" type="text" placeholder="Spelernaam" autocomplete="off" />
 
-    <button id="startScan">Start scannen</button>
-    <button id="lockBtn" class="secondary">Vergrendel speler</button>
-    <button id="toggleBtn" class="secondary">Wissel LAN ↔ Wi‑Fi</button>
+    <button id="startScan" aria-pressed="false">Start scan</button>
+    <button id="lockBtn" class="secondary" aria-pressed="false">Vergrendel speler</button>
+    <button id="toggleBtn" class="secondary" aria-pressed="false">LAN → Wi‑Fi</button>
     <button id="nextPlayerBtn" class="secondary">Volgende speler</button>
-
     <button id="resetBtn" class="secondary">Reset</button>
-    <button id="flashToggle" class="secondary">Zaklamp: uit</button>
+    <button id="flashToggle" class="secondary" aria-pressed="false">Zaklamp: uit</button>
 
-    <button id="downloadBtn">Download CSV</button>
-    <button id="downloadExcelBtn">Download Excel</button>
-    <button id="sendOutlookBtn" class="cloud">Verzend met Outlook</button>
-  </div>
+    <div class="cloud-group">
+      <button id="downloadBtn" class="cloud">Download CSV</button>
+      <button id="downloadExcelBtn" class="cloud">Download Excel</button>
+      <button id="sendOutlookBtn" class="cloud">Delen</button>
+    </div>
+  </section>
 
-  <div class="video-wrap">
-    <video id="camera" autoplay playsinline></video>
+  <section class="video-wrap">
+    <video id="camera" playsinline autoplay muted></video>
     <canvas id="overlay"></canvas>
-
-    <div id="toast" class="toast">Gescand</div>
     <div id="statusLight" class="status red"></div>
-  </div>
+    <div id="toast" class="toast">Klaar</div>
+  </section>
 
-  <div class="results-section">
+  <section class="results-section">
     <div class="results-header">
       <h2>Scanresultaten</h2>
-      <span class="scan-count"><span id="scanCount">0</span> gescand</span>
+      <span class="scan-count" id="scanCount">0</span>
     </div>
 
     <table id="results">
       <thead>
-      <tr>
-        <th>Tijd</th>
-        <th>Speler</th>
-        <th>LAN‑MAC</th>
-        <th>Wi‑Fi‑MAC</th>
-        <th>Serienummer</th>
-      </tr>
+        <tr>
+          <th>Tijd</th>
+          <th>Speler</th>
+          <th>LAN‑MAC</th>
+          <th>Wi‑Fi‑MAC</th>
+          <th>Serienummer</th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
-  </div>
+  </section>
 
-  https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.12.1/dist/quagga.min.js</script>
-  https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js</script>
-  https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js</script>
-  scanner.js</script>
+  <!-- EXTERNE LIBS -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.0.10/dist/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- JOUW LOGICA -->
+  <script src="scanner.js"></script>
+
+  <!-- SERVICE WORKER -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./service-worker.js");
+    }
+  </script>
 
 </body>
 </html>
