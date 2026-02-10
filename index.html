@@ -6,7 +6,12 @@
   <meta name="theme-color" content="#CE0000" />
   <title>RICOH Web Scanner Pro</title>
 
+  <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" sizes="192x192" href="icon-192.png" />
+  <link rel="icon" sizes="512x512" href="icon-512.png" />
+
+  <!-- Styles -->
   <link rel="stylesheet" href="styles.css" />
 
   <script>
@@ -55,20 +60,34 @@
 
     <table id="results">
       <thead>
-        <tr>
-          <th>Tijd</th>
-          <th>Speler</th>
-          <th>MAC-adres</th>
-          <th>Serienummer</th>
-        </tr>
+      <tr>
+        <th>Tijd</th>
+        <th>Speler</th>
+        <th>MAC-adres</th>
+        <th>Serienummer</th>
+      </tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Lokale libraries (offline) -->
-  <script src="./libs/quagga.min.js"></script>
-  <script src="./libs/xlsx.full.min.js"></script>
-  <script src="./libs/msal-browser.min.js"></script>
+  <!-- LIBS via CDN (geen downloads nodig) -->
+  <!-- Quagga2 (fallback als BarcodeDetector ontbreekt) -->
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.12.1/dist/quagga.min.js"></script>
 
-  <!-- Google API loader: wordt via SW gecachet na 1e gebruik -->
+  <!-- SheetJS (Excel export) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- MSAL (OneDrive) -->
+  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+
+  <!-- Google API loader (Drive) -->
+  <script src="https://apis.google.com/js/api.js"></script>
+
+  <!-- Tesseract.js (OCR) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- App logic -->
+  <script src="scanner.js"></script>
+</body>
+</html>
