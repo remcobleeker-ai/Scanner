@@ -328,6 +328,14 @@ async function processScan(raw) {
     bc.mac = bc.wifiMac;
     bc.wifiMac = tmp;
   }
+  
+// 3b. LAN-MAC en WiFi-MAC mogen nooit hetzelfde zijn
+if (bc.mac && bc.wifiMac && bc.mac === bc.wifiMac) {
+  showToast("LAN‑MAC en Wi‑Fi‑MAC kunnen niet gelijk zijn");
+  beep(240, 140, 0.2);
+  return;
+}
+
 
   // 4) DEDUP
   if (bc.mac && seenLanMacs.has(bc.mac)) {
