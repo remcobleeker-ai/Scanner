@@ -1,4 +1,5 @@
-const CACHE_VERSION = "ricoh-scanner-v8";
+const CACHE_VERSION = "ricoh-scanner-v9";
+
 const PRECACHE = [
   "./",
   "./index.html",
@@ -10,7 +11,9 @@ const PRECACHE = [
 ];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE_VERSION).then(cache => cache.addAll(PRECACHE)));
+  event.waitUntil(
+    caches.open(CACHE_VERSION).then(cache => cache.addAll(PRECACHE))
+  );
   self.skipWaiting();
 });
 
@@ -36,14 +39,13 @@ self.addEventListener("fetch", event => {
   event.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;
-      return fetch(req)
-        .then(resp =>
-          caches.open(CACHE_VERSION).then(c => {
-            try { c.put(req, resp.clone()); } catch {}
-            return resp;
-          })
-        )
-        .catch(() => caches.match("./index.html"));
+
+      return fetch(req).then(resp =>
+        caches.open(CACHE_VERSION).then(c => {
+          try { c.put(req, resp.clone()); } catch {}
+          return resp;
+        })
+      ).catch(() => caches.match("./index.html"));
     })
   );
 });
