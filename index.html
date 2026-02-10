@@ -7,15 +7,14 @@
   <title>RICOH Web Scanner Pro</title>
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" sizes="192x192" href="icon-192.png" />
-  <link rel="icon" sizes="512x512" href="icon-512.png" />
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 
   <!-- Styles -->
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css">
 
   <script>
-    // Registreer service worker
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("service-worker.js");
@@ -37,11 +36,7 @@
 
     <button id="downloadBtn">Download CSV</button>
     <button id="downloadExcelBtn">Download Excel</button>
-
-    <div class="cloud-group">
-      <button id="uploadOneDrive" class="cloud">Upload → OneDrive</button>
-      <button id="uploadGDrive" class="cloud">Upload → Google Drive</button>
-    </div>
+    <button id="sendOutlookBtn" class="cloud">Verzend met Outlook</button>
   </div>
 
   <div class="video-wrap">
@@ -63,7 +58,8 @@
       <tr>
         <th>Tijd</th>
         <th>Speler</th>
-        <th>MAC-adres</th>
+        <th>LAN‑MAC</th>
+        <th>Wi‑Fi‑MAC</th>
         <th>Serienummer</th>
       </tr>
       </thead>
@@ -71,20 +67,9 @@
     </table>
   </div>
 
-  <!-- LIBS via CDN (geen downloads nodig) -->
-  <!-- Quagga2 (fallback als BarcodeDetector ontbreekt) -->
+  <!-- LIBS via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.12.1/dist/quagga.min.js"></script>
-
-  <!-- SheetJS (Excel export) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-  <!-- MSAL (OneDrive) -->
-  <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
-
-  <!-- Google API loader (Drive) -->
-  <script src="https://apis.google.com/js/api.js"></script>
-
-  <!-- Tesseract.js (OCR) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <!-- App logic -->
