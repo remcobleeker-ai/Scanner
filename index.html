@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#CE0000" />
+  <meta name="google" content="notranslate" />
   <title>RICOH Web Scanner Pro</title>
 
   <link rel="manifest" href="./manifest.json" />
@@ -61,15 +62,15 @@
     </table>
   </section>
 
-  <!-- EXTERNE LIBS -->
+  <!-- JS Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.0.10/dist/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.0.12/dist/quagga.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- JOUW LOGICA -->
+  <!-- App Logic -->
   <script src="scanner.js"></script>
 
-  <!-- SERVICE WORKER -->
+  <!-- Service Worker -->
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("./service-worker.js");
