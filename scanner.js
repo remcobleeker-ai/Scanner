@@ -5,7 +5,7 @@ const CONFIG = {
   enableQuaggaFallback: true,
   ocr: { enabled: true },
 
-  // OCR versnellen door minder pixels te verwerken
+  // OCR versnellen: kleiner gebied scannen
   ocrCrop: {
     w: 0.70,  // 70% breedte
     h: 0.50,  // 50% hoogte
@@ -23,16 +23,12 @@ const ctx = overlay.getContext("2d");
 const toast = document.getElementById("toast");
 const statusLight = document.getElementById("statusLight");
 const tableBody = document.querySelector("#results tbody");
-
 const scanCountEl = document.getElementById("scanCount");
 
 const startBtn = document.getElementById("startScan");
 const lockBtn = document.getElementById("lockBtn");
 const toggleBtn = document.getElementById("toggleBtn");
-const nextPlayerBtn = document.createElement("button");
-nextPlayerBtn.textContent = "Volgende speler";
-nextPlayerBtn.className = "cloud";
-document.querySelector(".toolbar").appendChild(nextPlayerBtn);
+const nextPlayerBtn = document.getElementById("nextPlayerBtn");
 
 const resetBtn = document.getElementById("resetBtn");
 const flashToggleBtn = document.getElementById("flashToggle");
@@ -50,14 +46,14 @@ let lastBox = null;
 let lastScanAt = 0;
 let torchOn = false;
 
-let LOCKED = false;
-let toggleWifi = false;
+let LOCKED = false;  // vergrendel speler
+let toggleWifi = false; // LAN ↔ Wi-Fi wissel
 
-// één rij per speler
+// Eén rij per speler
 const playerIndex = new Map();
 let scanData = [];
 
-// unieke sets
+// Elk item maar 1×
 const seenLanMacs = new Set();
 const seenWifiMacs = new Set();
 const seenSerials = new Set();
@@ -65,8 +61,12 @@ const seenSerials = new Set();
 /****************************************************
  * STORAGE
  ****************************************************/
-function saveData(){ try{ localStorage.setItem("ricoh_scan_data_v8", JSON.stringify(scanData)); }catch{} }
-function loadData(){
+function saveData() {
+  try { localStorage.setItem("ricoh_scan_data_v8", JSON.stringify(scanData)); }
+  catch {}
+}
+
+function loadData() {
   try {
     const stored = localStorage.getItem("ricoh_scan_data_v8");
     if (stored) {
@@ -84,7 +84,7 @@ function loadData(){
 }
 
 /****************************************************
- * UI BUTTONS
+ * BUTTON LOGICA
  ****************************************************/
 lockBtn.addEventListener("click", () => {
   LOCKED = !LOCKED;
@@ -98,45 +98,61 @@ toggleBtn.addEventListener("click", () => {
   showToast("Toggle actief");
 });
 
-// Nieuwe: volgende speler knop
 nextPlayerBtn.addEventListener("click", () => {
   LOCKED = false;
   lockBtn.textContent = "Vergrendel speler";
   playerNameEl.value = "";
-  showToast("Nieuwe speler");
+  showToast("Nieuwe speler gestart");
 });
 
 /****************************************************
- * HELPER: beep, toast
+ * HUD / UI Helpers
  ****************************************************/
-function beep(freq=880, dur=140, vol=0.15){
-  try{
+function beep(freq=880, dur=140, vol=0.15) {
+  try {
     const ac = new (window.AudioContext||window.webkitAudioContext)();
     const o = ac.createOscillator(), g = ac.createGain();
     o.frequency.value=freq; g.gain.value=vol;
     o.connect(g); g.connect(ac.destination);
-    o.start(); setTimeout(()=>{o.stop(); ac.close();}, dur);
-  }catch{}
+    o.start();
+    setTimeout(() => { o.stop(); ac.close(); }, dur);
+  } catch {}
 }
 
-function showToast(msg){
+function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add("show");
-  setTimeout(()=>toast.classList.remove("show"), 900);
+  setTimeout(() => toast.classList.remove("show"), 900);
 }
 
-function updateScanCount(){ scanCountEl.textContent = scanData.length; }
+function updateScanCount() {
+  scanCountEl.textContent = scanData.length;
+}
+
+// LAN / WiFi / Serial indicator
+function indicateScanType(type) {
+  statusLight.style.background = {
+    lan:   "#00c853",
+    wifi:  "#2962ff",
+    serial:"#ffab00"
+  }[type] || "#CE0000";
+
+  setTimeout(() => {
+    statusLight.style.background = "";
+  }, 1200);
+}
 
 /****************************************************
- * OVERLAY TEKENEN
+ * OVERLAY RENDER
  ****************************************************/
-function drawOverlay(){
+function drawOverlay() {
   const w = overlay.width = video.clientWidth;
   const h = overlay.height = video.clientHeight;
   ctx.clearRect(0,0,w,h);
 
   const elapsed = Date.now() - lastScanAt;
-  if(!lastBox || elapsed > 1200){
+
+  if (!lastBox || elapsed > 1200) {
     ctx.strokeStyle="rgba(229,57,53,0.9)";
     ctx.lineWidth=3;
     const pad=20;
@@ -146,87 +162,100 @@ function drawOverlay(){
 
   ctx.strokeStyle="rgba(25,169,116,0.95)";
   ctx.lineWidth=4;
-  if(lastBox.type==="rect"){
+
+  if (lastBox.type==="rect") {
     const {x,y,width,height}=lastBox.rect;
     ctx.strokeRect(x,y,width,height);
   }
 }
 
 /****************************************************
- * MAC parsing
+ * MAC DETECTIE
  ****************************************************/
-function toColonMac(hex12){ return hex12.match(/.{1,2}/g).join(":").toUpperCase(); }
+function toColonMac(hex12) {
+  return hex12.match(/.{1,2}/g).join(":").toUpperCase();
+}
 
-function normalizeMacFlexible(raw){
-  if(!raw) return null;
+function normalizeMacFlexible(raw) {
+  if (!raw) return null;
   raw = String(raw);
 
   let c = raw.match(/[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}/);
-  if(c) return toColonMac(c[0].replace(/\./g,""));
+  if (c) return toColonMac(c[0].replace(/\./g,""));
 
   let h = raw.match(/\b[0-9A-Fa-f]{12}\b/);
-  if(h) return toColonMac(h[0]);
+  if (h) return toColonMac(h[0]);
 
   let d = raw.match(/([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}/);
-  if(d) return d[0].replace(/-/g,":").toUpperCase();
+  if (d) return d[0].replace(/-/g,":").toUpperCase();
 
   return null;
 }
 
 /****************************************************
- * BARCODE parsing
+ * BARCODE PARSER
  ****************************************************/
-function extractFromBarcode(raw){
+function extractFromBarcode(raw) {
   const out = { mac:null, wifiMac:null, serial:"" };
 
   const mac = normalizeMacFlexible(raw);
-  if(mac) out.mac = mac;
+  if (mac) out.mac = mac;
 
   let wfm = raw.match(/WFM\s*[:=\s]*([0-9A-Fa-f]{12})/i);
-  if(wfm) out.wifiMac = toColonMac(wfm[1]);
+  if (wfm) out.wifiMac = toColonMac(wfm[1]);
 
   let sn = raw.match(/(?:S\/?N|Serial|Serienummer)[\s:=]*([A-Za-z0-9\-]+)/i);
-  if(sn) out.serial = sn[1];
+  if (sn) out.serial = sn[1];
+
   return out;
 }
 
 /****************************************************
- * OCR parsing (sneller door cropping)
+ * OCR PARSER (DEELS GEKNIPT BIJ DEEL A)
  ****************************************************/
-function extractFromText(text){
+/****************************************************
+ * OCR PARSER (vervolg Deel A)
+ ****************************************************/
+function extractFromText(text) {
   const out = { mac:null, wifiMac:null, serial:"" };
-  if(!text) return out;
+  if (!text) return out;
 
   let wfm = text.match(/WFM[\s:=]*([0-9A-Fa-f]{12})/i);
-  if(wfm) out.wifiMac = toColonMac(wfm[1]);
+  if (wfm) out.wifiMac = toColonMac(wfm[1]);
 
   let macA = text.match(/MAC[\s:=]*([0-9A-Fa-f:\-]{12,17})/i);
-  if(macA) out.mac = normalizeMacFlexible(macA[1]);
+  if (macA) out.mac = normalizeMacFlexible(macA[1]);
 
-  if(!out.mac){
+  if (!out.mac) {
     const gen = normalizeMacFlexible(text);
-    if(gen && gen !== out.wifiMac) out.mac = gen;
+    if (gen && gen !== out.wifiMac) out.mac = gen;
   }
 
   let sn = text.match(/S\/?N[\s:=]*([A-Za-z0-9\-]+)/i);
-  if(sn) out.serial = sn[1];
+  if (sn) out.serial = sn[1];
+  else {
+    let lbl = text.match(/(?:Serial|Serienummer)[\s:=]*([A-Za-z0-9\-]+)/i);
+    if (lbl) out.serial = lbl[1];
+  }
 
   return out;
 }
 
-async function ocrScanVideoFrame(){
-  if(!CONFIG.ocr.enabled || !window.Tesseract) return "";
-  if(!video.videoWidth) return "";
+/****************************************************
+ * Snelle OCR (cropped)
+ ****************************************************/
+async function ocrScanVideoFrame() {
+  if (!CONFIG.ocr.enabled || !window.Tesseract) return "";
+  if (!video.videoWidth) return "";
 
   const crop = CONFIG.ocrCrop;
-
   const W = video.videoWidth;
   const H = video.videoHeight;
 
-  const x = Math.floor(W*crop.x);
-  const y = Math.floor(H*crop.y);
-  const w = Math.floor(W*crop.w);
-  const h = Math.floor(H*crop.h);
+  const x = Math.floor(W * crop.x);
+  const y = Math.floor(H * crop.y);
+  const w = Math.floor(W * crop.w);
+  const h = Math.floor(H * crop.h);
 
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -235,115 +264,396 @@ async function ocrScanVideoFrame(){
   const c = canvas.getContext("2d");
   c.drawImage(video, x, y, w, h, 0, 0, w, h);
 
-  try{
+  try {
     const { data:{ text } } = await Tesseract.recognize(canvas, "eng");
     return text || "";
-  }catch{
+  } catch {
     return "";
   }
 }
 
 /****************************************************
- * TABEL
+ * Tabelfuncties
  ****************************************************/
-function appendRow(time, player, mac, wifiMac, serial){
-  const tr=document.createElement("tr");
+function appendRow(time, player, mac, wifiMac, serial) {
+  const tr = document.createElement("tr");
   tr.innerHTML = `
     <td>${time}</td>
     <td>${player}</td>
-    <td>${mac||""}</td>
-    <td>${wifiMac||""}</td>
-    <td>${serial||""}</td>
+    <td>${mac || ""}</td>
+    <td>${wifiMac || ""}</td>
+    <td>${serial || ""}</td>
   `;
   tableBody.appendChild(tr);
 }
 
-function updateRow(idx){
+function updateRow(idx) {
   const rows = tableBody.querySelectorAll("tr");
   const r = scanData[idx];
   const tr = rows[idx];
+
   tr.children[0].textContent = r.time;
   tr.children[1].textContent = r.player;
-  tr.children[2].textContent = r.mac||"";
-  tr.children[3].textContent = r.wifiMac||"";
-  tr.children[4].textContent = r.serial||"";
+  tr.children[2].textContent = r.mac || "";
+  tr.children[3].textContent = r.wifiMac || "";
+  tr.children[4].textContent = r.serial || "";
 }
 
 /****************************************************
  * PROCESS SCAN
  ****************************************************/
-async function processScan(raw){
+async function processScan(raw) {
   const cleaned = String(raw).trim();
   const playerInput = playerNameEl.value.trim();
 
   let player;
-  if(LOCKED){
-    if(playerIndex.size === 0){
+  if (LOCKED) {
+    if (playerIndex.size === 0) {
       showToast("Geen speler vergrendeld");
+      beep(240, 140, 0.2);
       return;
     }
-    player = [...playerIndex.keys()][playerIndex.size-1];
+    player = [...playerIndex.keys()][playerIndex.size - 1];
   } else {
-    if(!playerInput){
+    if (!playerInput) {
       showToast("Vul eerst spelernaam in");
-      beep(240,140,0.2);
+      beep(240, 140, 0.2);
       return;
     }
     player = playerInput;
   }
 
   const timestamp = new Date().toLocaleString();
+
+  // 1. Barcode parsing
   let bc = extractFromBarcode(cleaned);
 
-  if(!bc.mac || !bc.wifiMac || !bc.serial){
+  // 2. OCR indien nodig
+  if (!bc.mac || !bc.wifiMac || !bc.serial) {
     const text = await ocrScanVideoFrame();
     const tx = extractFromText(text);
-    bc.mac = bc.mac || tx.mac;
+
+    bc.mac     = bc.mac     || tx.mac;
     bc.wifiMac = bc.wifiMac || tx.wifiMac;
-    bc.serial = bc.serial || tx.serial;
+    bc.serial  = bc.serial  || tx.serial;
   }
 
-  if(toggleWifi){
-    let tmp = bc.mac;
+  // 3. Wifi ↔ LAN toggle
+  if (toggleWifi) {
+    const tmp = bc.mac;
     bc.mac = bc.wifiMac;
     bc.wifiMac = tmp;
   }
 
-  if(bc.mac && seenLanMacs.has(bc.mac)){
-    showToast("LAN-MAC al gescand");
-    return;
-  }
-  if(bc.wifiMac && seenWifiMacs.has(bc.wifiMac)){
-    showToast("WiFi-MAC al gescand");
-    return;
-  }
-  if(bc.serial && seenSerials.has(bc.serial)){
-    showToast("Serial al gescand");
+  // 4. DEDUP
+  if (bc.mac && seenLanMacs.has(bc.mac)) {
+    showToast("LAN‑MAC al gescand");
+    beep(240,140,0.2);
     return;
   }
 
+  if (bc.wifiMac && seenWifiMacs.has(bc.wifiMac)) {
+    showToast("Wi‑Fi‑MAC al gescand");
+    beep(240,140,0.2);
+    return;
+  }
+
+  if (bc.serial && seenSerials.has(bc.serial)) {
+    showToast("Serienummer al gescand");
+    beep(240,140,0.2);
+    return;
+  }
+
+  // 5. De juiste spelerregel bepalen
   let idx;
-  if(playerIndex.has(player)){
+  if (playerIndex.has(player)) {
     idx = playerIndex.get(player);
   } else {
     idx = scanData.length;
     playerIndex.set(player, idx);
     scanData.push({
-      time: timestamp, player,
-      mac:"", wifiMac:"", serial:""
+      time: timestamp,
+      player,
+      mac: "",
+      wifiMac: "",
+      serial: ""
     });
-    appendRow(timestamp,player,"","","");
+    appendRow(timestamp, player, "", "", "");
   }
 
-  const row = scanData[idx];
-  let updated=false;
+  let row = scanData[idx];
+  let updated = false;
 
-  if(bc.mac && !row.mac){
+  // Velden aanvullen (nooit overschrijven)
+  if (bc.mac && !row.mac) {
     row.mac = bc.mac;
     seenLanMacs.add(bc.mac);
-    updated=true;
+    updated = true;
+    indicateScanType("lan");
   }
-  if(bc.wifiMac && !row.wifiMac){
-    row.wifiMac = bc.wi
 
-Please resend this message in the next turn.
+  if (bc.wifiMac && !row.wifiMac) {
+    row.wifiMac = bc.wifiMac;
+    seenWifiMacs.add(bc.wifiMac);
+    updated = true;
+    indicateScanType("wifi");
+  }
+
+  if (bc.serial && !row.serial) {
+    row.serial = bc.serial;
+    seenSerials.add(bc.serial);
+    updated = true;
+    indicateScanType("serial");
+  }
+
+  if (updated) {
+    row.time = timestamp;
+    lastScanAt = Date.now();
+    beep(880, 140, 0.18);
+    showToast("Gescand");
+  } else {
+    showToast("Geen nieuwe data");
+    beep(480, 140, 0.12);
+  }
+
+  updateRow(idx);
+  saveData();
+  updateScanCount();
+}
+
+/****************************************************
+ * SCANNING SETUP
+ ****************************************************/
+async function startScan() {
+  startBtn.disabled = true;
+
+  // Camera
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" }
+  });
+
+  video.srcObject = stream;
+  await video.play();
+  track = stream.getVideoTracks()[0];
+
+  // BarcodeDetector?
+  if ("BarcodeDetector" in window) {
+    try {
+      detector = new BarcodeDetector({
+        formats: [
+          "qr_code","code_128","code_39","ean_13","ean_8",
+          "upc_a","itf","pdf417","data_matrix"
+        ]
+      });
+      useBarcodeDetector = true;
+    } catch {
+      useBarcodeDetector = false;
+    }
+  }
+
+  (function loop(){
+    drawOverlay();
+    requestAnimationFrame(loop);
+  })();
+
+  if (useBarcodeDetector) scanLoopDetector();
+  else startQuagga();
+}
+
+async function scanLoopDetector() {
+  try {
+    const found = await detector.detect(video);
+    if (found && found.length) {
+      for (const bc of found) {
+        if (bc.boundingBox) {
+          const r = bc.boundingBox;
+          lastBox = {
+            type: "rect",
+            rect: { x:r.x, y:r.y, width:r.width, height:r.height }
+          };
+        }
+        processScan(bc.rawValue);
+      }
+    }
+  } catch {}
+
+  requestAnimationFrame(scanLoopDetector);
+}
+
+function startQuagga() {
+  if (typeof Quagga === "undefined") {
+    console.warn("Quagga niet geladen!");
+    return;
+  }
+
+  Quagga.init({
+    inputStream: {
+      type: "LiveStream",
+      target: video,
+      constraints: { facingMode: "environment" }
+    },
+    decoder: {
+      readers: [
+        "code_128_reader","code_39_reader","ean_reader",
+        "ean_8_reader","upc_reader","i2of5_reader"
+      ]
+    },
+    locate: true
+  }, err => {
+    if (err) {
+      console.error(err);
+      startBtn.disabled = false;
+      return;
+    }
+    Quagga.start();
+  });
+
+  Quagga.onDetected(res => {
+    if (res?.codeResult?.code) {
+      processScan(res.codeResult.code);
+
+      if (res.box && Array.isArray(res.box)) {
+        lastBox = {
+          type: "poly",
+          points: res.box.map(p => [p[0], p[1]])
+        };
+        lastScanAt = Date.now();
+      }
+    }
+  });
+}
+
+/****************************************************
+ * ZAKLAMP
+ ****************************************************/
+async function toggleTorch() {
+  if (!track?.getCapabilities) {
+    alert("Zaklamp niet beschikbaar");
+    return;
+  }
+  const caps = track.getCapabilities();
+  if (!caps.torch) {
+    alert("Torch niet beschikbaar");
+    return;
+  }
+
+  torchOn = !torchOn;
+  try {
+    await track.applyConstraints({ advanced:[{ torch:torchOn }] });
+    flashToggleBtn.textContent = torchOn ? "Zaklamp: aan" : "Zaklamp: uit";
+  } catch {
+    alert("Kon zaklamp niet schakelen");
+  }
+}
+
+/****************************************************
+ * CSV & EXCEL EXPORT
+ ****************************************************/
+function buildCSV() {
+  const header =
+    "Tijd,Speler,LAN-MAC,Wi-Fi-MAC,Serienummer";
+  const rows = scanData.map(r =>
+    [r.time, r.player, r.mac || "", r.wifiMac || "", r.serial || ""]
+      .map(v => `"${String(v).replace(/"/g,'""')}"`)
+      .join(",")
+  );
+  return header + "\n" + rows.join("\n");
+}
+
+function downloadCSV() {
+  if (scanData.length===0) {
+    showToast("Geen data");
+    return;
+  }
+  const blob = new Blob(["\uFEFF"+buildCSV()], {type:"text/csv"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="scanresultaten.csv";
+  a.click();
+}
+
+function downloadExcel() {
+  if (scanData.length===0) {
+    showToast("Geen data");
+    return;
+  }
+  const wsData = [
+    ["Tijd","Speler","LAN-MAC","Wi-Fi-MAC","Serienummer"],
+    ...scanData.map(r => [
+      r.time, r.player, r.mac || "", r.wifiMac || "", r.serial || ""
+    ])
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws["!cols"] = [
+    {wch:22},{wch:20},{wch:20},{wch:20},{wch:20}
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, "Scanresultaten");
+  XLSX.writeFile(wb, "scanresultaten.xlsx");
+}
+
+/****************************************************
+ * OUTLOOK DELEN
+ ****************************************************/
+async function sendWithOutlook() {
+  if (scanData.length === 0) {
+    showToast("Geen data");
+    return;
+  }
+
+  const csvText = buildCSV();
+  const blob = new Blob(["\uFEFF"+csvText], { type:"text/csv" });
+  const file = new File([blob], "scanresultaten.csv", {type:"text/csv"});
+
+  // Share sheet op Android
+  if (navigator.canShare && navigator.canShare({ files:[file] })) {
+    try {
+      await navigator.share({
+        title: "Scanresultaten",
+        text: "Bijgevoegd CSV-bestand.",
+        files: [file]
+      });
+      showToast("Verzonden");
+      return;
+    } catch(e) { console.warn("Share mislukte:", e); }
+  }
+
+  // fallback
+  const mailto = `mailto:?subject=Scanresultaten&body=${encodeURIComponent(csvText)}`;
+  window.location.href = mailto;
+}
+
+/****************************************************
+ * RESET
+ ****************************************************/
+function resetAll() {
+  playerIndex.clear();
+  scanData = [];
+  seenLanMacs.clear();
+  seenWifiMacs.clear();
+  seenSerials.clear();
+  lastBox = null;
+
+  tableBody.innerHTML = "";
+  statusLight.className = "status red";
+  toast.classList.remove("show");
+
+  saveData();
+  updateScanCount();
+}
+
+/****************************************************
+ * EVENT LISTENERS
+ ****************************************************/
+startBtn.addEventListener("click", startScan);
+resetBtn.addEventListener("click", resetAll);
+downloadBtn.addEventListener("click", downloadCSV);
+downloadExcelBtn.addEventListener("click", downloadExcel);
+flashToggleBtn.addEventListener("click", toggleTorch);
+sendOutlookBtn.addEventListener("click", sendWithOutlook);
+
+window.addEventListener("resize", drawOverlay);
+
+// Laden van opgeslagen data
+loadData();
