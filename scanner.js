@@ -3,21 +3,6 @@
  ****************************************************/
 const CONFIG = {
   enableQuaggaFallback: true,
-
-  cloud: {
-    oneDrive: {
-      enabled: true,
-      clientId: "85cac966-79c1-e43c-00ab-8251cf2ebcf1", // <-- VEREIST
-      scopes: ["Files.ReadWrite"]
-    },
-    gDrive: {
-      enabled: true,
-      apiKey: "VUL_JOUW_GOOGLE_API_KEY_HIER_IN", // <-- VEREIST
-      clientId: "VUL_JOUW_GOOGLE_OAUTH_CLIENT_ID_HIER_IN.apps.googleusercontent.com" // <-- VEREIST
-    }
-  },
-
-  // OCR via CDN (tesseract.js v5) — online direct bruikbaar
   ocr: { enabled: true }
 };
 
@@ -37,8 +22,7 @@ const resetBtn = document.getElementById("resetBtn");
 const flashToggleBtn = document.getElementById("flashToggle");
 const downloadBtn = document.getElementById("downloadBtn");
 const downloadExcelBtn = document.getElementById("downloadExcelBtn");
-const uploadODBtn = document.getElementById("uploadOneDrive");
-const uploadGDBtn = document.getElementById("uploadGDrive");
+const sendOutlookBtn = document.getElementById("sendOutlookBtn");
 const playerNameEl = document.getElementById("playerName");
 
 /****************************************************
@@ -48,19 +32,32 @@ let stream, track, detector, useBarcodeDetector = false;
 let lastBox = null;
 let lastScanAt = 0;
 let torchOn = false;
-const dedupSet = new Set(); // MAC#Serial
-let scanData = [];
+
+// Eén rij per speler
+const playerIndex = new Map(); // player -> rowIndex in scanData
+let scanData = [];             // { time, player, mac, wifiMac, serial }
+
+// Sterke de-dup: elk item mag 1x
+const seenLanMacs = new Set();
+const seenWifiMacs = new Set();
+const seenSerials = new Set();
 
 /****************************************************
  * PERSISTENTIE
  ****************************************************/
-function saveData(){ try{ localStorage.setItem("ricoh_scan_data_v4", JSON.stringify(scanData)); }catch{} }
+function saveData(){ try{ localStorage.setItem("ricoh_scan_data_v5", JSON.stringify(scanData)); }catch{} }
 function loadData(){
   try {
-    const stored = localStorage.getItem("ricoh_scan_data_v4");
+    const stored = localStorage.getItem("ricoh_scan_data_v5");
     if (stored) {
       scanData = JSON.parse(stored);
-      scanData.forEach(r => { appendRow(r.time,r.player,r.mac,r.serial); dedupSet.add(`${r.mac}#${r.serial}`); });
+      scanData.forEach((r, idx) => {
+        appendRow(r.time, r.player, r.mac, r.wifiMac, r.serial);
+        if (r.player && !playerIndex.has(r.player)) playerIndex.set(r.player, idx);
+        if (r.mac) seenLanMacs.add(r.mac);
+        if (r.wifiMac) seenWifiMacs.add(r.wifiMac);
+        if (r.serial) seenSerials.add(r.serial);
+      });
       updateScanCount();
     }
   } catch {}
@@ -103,7 +100,7 @@ function drawOverlay(){
 }
 
 /****************************************************
- * MAC & SERIAL EXTRACTIE
+ * PARSING HELPERS
  ****************************************************/
 function toColonMac(hex12){ return hex12.match(/.{1,2}/g).join(":").toUpperCase(); }
 function normalizeMacFlexible(raw){
@@ -113,49 +110,94 @@ function normalizeMacFlexible(raw){
   let d = raw.match(/([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}/); if(d) return d[0].replace(/-/g,":").toUpperCase();
   return null;
 }
-function extractMac(raw){
-  raw=String(raw);
-  const candidates=[raw, raw.replace(/mac\s*[:=]/i,""), raw.replace(/WFM\s*[:=]/i,"")];
-  for(const c of candidates){ const mac=normalizeMacFlexible(c); if(mac) return mac; }
-  return null;
-}
-function extractSerial(raw, mac){
-  raw=String(raw);
-  try { const obj=JSON.parse(raw); for(const k of ["serial","serienummer","sn","s/n"]) if(obj[k]) return String(obj[k]).trim(); } catch {}
-  let lbl = raw.match(/(?:S\/?N|Serial|Serienummer)\s*[:=#]?\s*([A-Za-z0-9\-]+)/i); if(lbl) return lbl[1].trim();
-  const parts = raw.split(/[;,\|]/).map(s=>s.trim()).filter(Boolean);
-  if(parts.length>=2){ const other=parts.find(p=>!normalizeMacFlexible(p)); if(other) return other; }
-  const tokens = raw.replace(/[^\w\-]/g," ").split(/\s+/).filter(Boolean);
-  const nonMac = tokens.filter(t=>!normalizeMacFlexible(t)&&/^[A-Za-z0-9\-]{8,20}$/.test(t));
-  if(nonMac.length) return nonMac.sort((a,b)=>b.length-a.length)[0];
-  return "";
+
+// Barcode (ruwe string) -> mogelijk LAN-MAC en/of Serial
+function extractFromBarcode(raw){
+  const out = { mac: null, wifiMac: null, serial: "" };
+  const mac = normalizeMacFlexible(raw);
+  if (mac) out.mac = mac;
+
+  // SN labels
+  let lbl = String(raw).match(/(?:S\/?N|Serial|Serienummer)\s*[:=#]?\s*([A-Za-z0-9\-]+)/i);
+  if (lbl) out.serial = lbl[1].trim();
+
+  // Als barcode al een 'WFM' bevat, interpreteer dat als Wi-Fi-MAC
+  let wfm = String(raw).match(/WFM\s*[:=\s]*([0-9A-Fa-f]{12})/i);
+  if (wfm) {
+    out.wifiMac = toColonMac(wfm[1]);
+    // en zorg dat we hem niet ook als LAN-MAC zetten
+    if (out.mac && out.mac === out.wifiMac) out.mac = null;
+  }
+  return out;
 }
 
-// OCR uit tekst
-function extractMacFromText(text){
-  if(!text) return null;
-  let wfm = text.match(/WFM\s*[:\s]*([0-9A-Fa-f]{12})/i); if(wfm) return toColonMac(wfm[1]);
-  let macA = text.match(/MAC\s*[:\s]*([0-9A-Fa-f:\-]{12,17})/i); if(macA) return normalizeMacFlexible(macA[1]);
-  let gen = normalizeMacFlexible(text); if(gen) return gen;
-  return null;
-}
-function extractSerialFromText(text){
-  if(!text) return "";
-  let sn = text.match(/S\/?N\s*[:\s]*([A-Za-z0-9\-]+)/i); if(sn) return sn[1];
-  let lbl = text.match(/(?:Serial|Serienummer)\s*[:\s]*([A-Za-z0-9\-]+)/i); if(lbl) return lbl[1];
-  const tokens = text.replace(/[^\w\-]/g," ").split(/\s+/).filter(Boolean);
-  const cands = tokens.filter(t => !/^WFM$/i.test(t) && !normalizeMacFlexible(t) && /^[A-Za-z0-9\-]{8,20}$/.test(t));
-  if(cands.length) return cands.sort((a,b)=>b.length-a.length)[0];
-  return "";
+// OCR (tekst) -> mogelijk Wi-Fi-MAC (WFM), LAN-MAC en/of Serial
+function extractFromText(text){
+  const out = { mac: null, wifiMac: null, serial: "" };
+  if (!text) return out;
+
+  // Wi-Fi-MAC via WFM
+  let wfm = text.match(/WFM\s*[:\s]*([0-9A-Fa-f]{12})/i);
+  if (wfm) out.wifiMac = toColonMac(wfm[1]);
+
+  // MAC: AA:BB:...
+  let macA = text.match(/MAC\s*[:\s]*([0-9A-Fa-f:\-]{12,17})/i);
+  if (macA) out.mac = normalizeMacFlexible(macA[1]);
+
+  // Generieke MAC als niets anders gevonden (maar alleen als we nog geen Wi-Fi-MAC hadden)
+  if (!out.mac) {
+    const gen = normalizeMacFlexible(text);
+    if (gen && gen !== out.wifiMac) out.mac = gen;
+  }
+
+  // Serienummer labels
+  let sn = text.match(/S\/?N\s*[:\s]*([A-Za-z0-9\-]+)/i);
+  if (sn) out.serial = sn[1].trim();
+  else {
+    let lbl = text.match(/(?:Serial|Serienummer)\s*[:\s]*([A-Za-z0-9\-]+)/i);
+    if (lbl) out.serial = lbl[1].trim();
+    else {
+      // fallback: langste alfanumerieke (8–20), geen MAC
+      const tokens = text.replace(/[^\w\-]/g," ").split(/\s+/).filter(Boolean);
+      const cands = tokens.filter(t => !/^WFM$/i.test(t) && !normalizeMacFlexible(t) && /^[A-Za-z0-9\-]{8,20}$/.test(t));
+      if (cands.length) out.serial = cands.sort((a,b)=>b.length-a.length)[0];
+    }
+  }
+
+  // Als LAN-MAC gelijk is aan Wi-Fi-MAC, geef Wi-Fi voorrang en verwijder LAN
+  if (out.mac && out.wifiMac && out.mac === out.wifiMac) out.mac = null;
+
+  return out;
 }
 
 /****************************************************
  * TABEL
  ****************************************************/
-function appendRow(time, player, mac, serial){
-  const tr=document.createElement("tr");
-  tr.innerHTML = `<td>${time}</td><td>${player}</td><td>${mac}</td><td>${serial}</td>`;
+function appendRow(time, player, mac, wifiMac, serial){
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${time}</td>
+    <td>${player || ""}</td>
+    <td>${mac || ""}</td>
+    <td>${wifiMac || ""}</td>
+    <td>${serial || ""}</td>
+  `;
   tableBody.appendChild(tr);
+}
+function updateRow(idx){
+  // herschrijf rij in DOM
+  const rows = tableBody.querySelectorAll("tr");
+  const r = scanData[idx];
+  let tr = rows[idx];
+  if (!tr) {
+    appendRow(r.time, r.player, r.mac, r.wifiMac, r.serial);
+    return;
+    }
+  tr.children[0].textContent = r.time;
+  tr.children[1].textContent = r.player || "";
+  tr.children[2].textContent = r.mac || "";
+  tr.children[3].textContent = r.wifiMac || "";
+  tr.children[4].textContent = r.serial || "";
 }
 
 /****************************************************
@@ -170,67 +212,88 @@ async function ocrScanVideoFrame(){
   const c=canvas.getContext("2d"); c.drawImage(video,0,0);
 
   try{
-    const { data:{ text } } = await Tesseract.recognize(canvas, "eng"); // CDN: laadt automatisch de eng traineddata
+    const { data:{ text } } = await Tesseract.recognize(canvas, "eng");
     return text || "";
-  }catch(e){
-    console.error("OCR failed", e);
-    return "";
-  }
+  }catch{ return ""; }
 }
 
 /****************************************************
- * PROCESS SCAN (barcode + OCR)
+ * PROCESS SCAN
  ****************************************************/
 async function processScan(raw){
-  const cleaned=String(raw).trim();
+  const cleaned = String(raw).trim();
   const player = playerNameEl?.value?.trim() || "";
   const timestamp = new Date().toLocaleString();
 
-  // 1) Barcode
-  let mac = extractMac(cleaned);
-  let serial = extractSerial(cleaned, mac);
+  // 1) Haal uit barcode
+  let bc = extractFromBarcode(cleaned);
 
-  // 2) OCR indien nodig
-  if(!mac || !serial){
+  // 2) OCR als iets ontbreekt
+  if (!bc.mac || !bc.serial || !bc.wifiMac) {
     const text = await ocrScanVideoFrame();
-    if(text){
-      if(!mac){ const m=extractMacFromText(text); if(m) mac=m; }
-      if(!serial){ const s=extractSerialFromText(text); if(s) serial=s; }
-    }
+    const tx = extractFromText(text);
+    // combineer, met WFM als wifiMac
+    bc.wifiMac = bc.wifiMac || tx.wifiMac;
+    bc.mac     = bc.mac     || tx.mac;
+    bc.serial  = bc.serial  || tx.serial;
   }
 
-  if(!mac){
-    statusLight.className="status red"; showToast("Geen MAC gevonden"); beep(240,140,0.2);
-    return;
+  // 3) De-dup per item: LAN-MAC, Wi-Fi-MAC, Serial mogen maar 1x voorkomen
+  if (bc.mac && seenLanMacs.has(bc.mac)) {
+    showToast("LAN‑MAC al gescand"); beep(240,140,0.2); return;
+  }
+  if (bc.wifiMac && seenWifiMacs.has(bc.wifiMac)) {
+    showToast("Wi‑Fi‑MAC al gescand"); beep(240,140,0.2); return;
+  }
+  if (bc.serial && seenSerials.has(bc.serial)) {
+    showToast("Serienummer al gescand"); beep(240,140,0.2); return;
   }
 
-  const key = `${mac}#${serial}`;
-  if(dedupSet.has(key)) return;
-  dedupSet.add(key);
+  // 4) Bepaal rij (één per speler). Geen speler? Maak losse rij op basis van tijdstempel als key.
+  const key = player || `NO_PLAYER_${new Date().getTime()}`;
+  let idx;
+  if (player && playerIndex.has(player)) {
+    idx = playerIndex.get(player);
+  } else {
+    idx = scanData.length;
+    playerIndex.set(player, idx);
+    scanData.push({ time: timestamp, player, mac: "", wifiMac: "", serial: "" });
+    appendRow(timestamp, player, "", "", "");
+  }
 
-  scanData.push({ raw: cleaned, time: timestamp, player, mac, serial });
+  // 5) Vul alleen nog lege velden — nooit overschrijven (alles 1x scannen)
+  const row = scanData[idx];
+
+  let updated = false;
+  if (bc.mac && !row.mac)        { row.mac = bc.mac; seenLanMacs.add(bc.mac); updated = true; }
+  if (bc.wifiMac && !row.wifiMac){ row.wifiMac = bc.wifiMac; seenWifiMacs.add(bc.wifiMac); updated = true; }
+  if (bc.serial && !row.serial)  { row.serial = bc.serial; seenSerials.add(bc.serial); updated = true; }
+
+  // Als we net een nieuwe rij hebben gemaakt, staat time al goed; anders alleen bij echte wijziging timestamp updaten.
+  if (updated && idx < scanData.length) {
+    row.time = timestamp;
+  }
+
   saveData();
-  appendRow(timestamp, player, mac, serial);
+  updateRow(idx);
   updateScanCount();
 
-  statusLight.className="status green"; showToast("Gescand"); beep(880,140,0.18);
+  statusLight.className="status green"; showToast(updated ? "Gescand" : "Geen nieuwe info"); beep(updated?880:480, 140, updated?0.18:0.12);
   lastScanAt = Date.now();
 }
 
 /****************************************************
  * SCANNEN
  ****************************************************/
+let track=null;
 async function startScan(){
   startBtn.disabled = true;
   statusLight.className="status red";
+  const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }});
+  video.srcObject = media; await video.play();
+  track = media.getVideoTracks()[0];
 
-  // Camera stream (HTTPS vereist)
-  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-  video.srcObject = stream; await video.play();
-  const tracks = stream.getVideoTracks(); track = tracks && tracks[0];
-
-  // BarcodeDetector check
-  if("BarcodeDetector" in window){
+  if ("BarcodeDetector" in window) {
     try {
       detector = new BarcodeDetector({
         formats: ["qr_code","code_128","code_39","ean_13","ean_8","upc_a","itf","pdf417","data_matrix"]
@@ -240,11 +303,9 @@ async function startScan(){
   }
 
   (function loop(){ drawOverlay(); requestAnimationFrame(loop); })();
-
-  if(useBarcodeDetector) scanLoopDetector();
+  if (useBarcodeDetector) scanLoopDetector();
   else startQuagga();
 }
-
 async function scanLoopDetector(){
   try{
     const found = await detector.detect(video);
@@ -257,18 +318,16 @@ async function scanLoopDetector(){
   }catch{}
   requestAnimationFrame(scanLoopDetector);
 }
-
 function startQuagga(){
-  if(typeof Quagga==="undefined"){ console.warn("Quagga niet geladen"); return; }
+  if (typeof Quagga==="undefined") { console.warn("Quagga niet geladen"); return; }
   Quagga.init({
     inputStream:{ type:"LiveStream", target: video, constraints:{ facingMode:"environment" } },
     decoder:{ readers:["code_128_reader","code_39_reader","ean_reader","ean_8_reader","upc_reader","i2of5_reader"] },
     locate:true
   }, err => {
-    if(err){ console.error(err); startBtn.disabled=false; return; }
+    if (err) { console.error(err); startBtn.disabled=false; return; }
     Quagga.start();
   });
-
   Quagga.onDetected(res => {
     if(res?.codeResult?.code){
       processScan(res.codeResult.code);
@@ -295,12 +354,15 @@ async function toggleTorch(){
 }
 
 /****************************************************
- * EXPORT: CSV & EXCEL
+ * EXPORT
  ****************************************************/
 function buildCSV(){
-  const header="Tijd,Speler,MAC-adres,Serienummer";
-  const rows = scanData.map(r => [r.time,r.player,r.mac,r.serial].map(v=>`"${String(v).replace(/\"/g,'\"\"')}"`).join(","));
-  return header+"\n"+rows.join("\n");
+  const header = "Tijd,Speler,LAN-MAC,Wi-Fi-MAC,Serienummer";
+  const rows = scanData.map(r =>
+    [r.time, r.player, r.mac || "", r.wifiMac || "", r.serial || ""]
+      .map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")
+  );
+  return header + "\n" + rows.join("\n");
 }
 function downloadCSV(){
   if(scanData.length===0){ showToast("Geen data"); return; }
@@ -310,78 +372,61 @@ function downloadCSV(){
 function downloadExcel(){
   if(scanData.length===0){ showToast("Geen data"); return; }
   if(typeof XLSX==="undefined"){ alert("Excel library ontbreekt"); return; }
-  const wsData=[["Tijd","Speler","MAC-adres","Serienummer"], ...scanData.map(r=>[r.time,r.player,r.mac,r.serial])];
+  const wsData=[["Tijd","Speler","LAN-MAC","Wi-Fi-MAC","Serienummer"], ...scanData.map(r=>[r.time,r.player,r.mac||"",r.wifiMac||"",r.serial||""])];
   const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws["!cols"]=[{wch:22},{wch:20},{wch:20},{wch:20}];
+  ws["!cols"]=[{wch:22},{wch:20},{wch:20},{wch:20},{wch:20}];
   XLSX.utils.book_append_sheet(wb, ws, "Scanresultaten");
   XLSX.writeFile(wb, "scanresultaten.xlsx");
 }
 
 /****************************************************
- * CLOUD: OneDrive & Google Drive
+ * VERZEND MET OUTLOOK
+ * - Android/Chrome: Web Share API met CSV-bijlage => Outlook share
+ * - Fallback: mailto: met CSV in de body (bijlage niet mogelijk via mailto)
  ****************************************************/
-async function getCSVBlob(){ return new Blob(["\uFEFF"+buildCSV()], {type:"text/csv;charset=utf-8"}); }
+async function sendWithOutlook(){
+  if (scanData.length === 0) { showToast("Geen data"); return; }
 
-/* OneDrive */
-async function uploadToOneDrive(){
-  if(!CONFIG.cloud.oneDrive.enabled){ alert("OneDrive staat uit"); return; }
-  if(typeof msal==="undefined"){ alert("MSAL ontbreekt"); return; }
+  const csvText = buildCSV();
+  const csvBlob = new Blob(["\uFEFF"+csvText], { type: "text/csv" });
+  const file = new File([csvBlob], "scanresultaten.csv", { type: "text/csv" });
 
-  const msalConfig={
-    auth:{ clientId: CONFIG.cloud.oneDrive.clientId, authority:"https://login.microsoftonline.com/common", redirectUri: location.href },
-    cache:{ cacheLocation:"localStorage" }
-  };
-  const app = new msal.PublicClientApplication(msalConfig);
-  let account = app.getAllAccounts()[0];
-  if(!account){ const login = await app.loginPopup({ scopes: CONFIG.cloud.oneDrive.scopes }); account = login.account; }
+  const subject = "Scanresultaten";
+  const bodyIntro = "Bijgevoegd de scanresultaten.\n\n";
+  const bodyFallback = bodyIntro + csvText;
 
-  const token = await app.acquireTokenSilent({ scopes: CONFIG.cloud.oneDrive.scopes, account })
-    .catch(()=> app.acquireTokenPopup({ scopes: CONFIG.cloud.oneDrive.scopes }));
+  // 1) Web Share API met bestanden (Android/Chrome/Edge)
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try{
+      await navigator.share({
+        title: subject,
+        text: "Scanresultaten als CSV.",
+        files: [file]
+      });
+      showToast("Verzonden");
+      return;
+    }catch(e){
+      // doorgaan naar mailto-fallback
+    }
+  }
 
-  const blob = await getCSVBlob();
-  const name = `scan-${new Date().toISOString().replace(/[:T]/g,"-").slice(0,19)}.csv`;
-  const url = `https://graph.microsoft.com/v1.0/me/drive/root:/RicohScanner/${name}:/content`;
-
-  const res = await fetch(url, { method:"PUT", headers:{ Authorization:"Bearer "+token.accessToken }, body: blob });
-  if(!res.ok){ alert("Upload naar OneDrive mislukt"); return; }
-  alert("Upload naar OneDrive voltooid");
-}
-
-/* Google Drive */
-async function uploadToGDrive(){
-  if(!CONFIG.cloud.gDrive.enabled){ alert("Google Drive staat uit"); return; }
-  if(typeof gapi==="undefined"){ alert("Google API ontbreekt"); return; }
-
-  await new Promise(resolve => gapi.load("client:auth2", resolve));
-  await gapi.client.init({
-    apiKey: CONFIG.cloud.gDrive.apiKey,
-    clientId: CONFIG.cloud.gDrive.clientId,
-    discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
-    scope: "https://www.googleapis.com/auth/drive.file"
-  });
-  if(!gapi.auth.getToken()) await gapi.auth2.getAuthInstance().signIn();
-
-  const blob = await getCSVBlob();
-  const fileName = `scan-${Date.now()}.csv`;
-
-  const form = new FormData();
-  form.append("metadata", new Blob([JSON.stringify({ name:fileName, mimeType:"text/csv" })], {type:"application/json"}));
-  form.append("file", blob);
-
-  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-    method:"POST",
-    headers:{ Authorization: "Bearer " + gapi.auth.getToken().access_token },
-    body: form
-  });
-  if(!res.ok){ alert("Google Drive upload mislukt"); return; }
-  alert("Upload naar Google Drive voltooid");
+  // 2) mailto fallback (geen bijlage mogelijk, maar wel inhoud in body)
+  const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyFallback)}`;
+  window.location.href = mailto;
 }
 
 /****************************************************
  * RESET & EVENTS
  ****************************************************/
 function resetAll(){
-  dedupSet.clear(); scanData=[]; lastBox=null; tableBody.innerHTML="";
+  playerIndex.clear();
+  scanData = [];
+  seenLanMacs.clear();
+  seenWifiMacs.clear();
+  seenSerials.clear();
+
+  lastBox = null;
+  tableBody.innerHTML="";
   statusLight.className="status red"; toast.classList.remove("show");
   saveData(); updateScanCount();
 }
@@ -391,8 +436,7 @@ resetBtn.addEventListener("click", resetAll);
 downloadBtn.addEventListener("click", downloadCSV);
 downloadExcelBtn.addEventListener("click", downloadExcel);
 flashToggleBtn.addEventListener("click", toggleTorch);
-uploadODBtn.addEventListener("click", uploadToOneDrive);
-uploadGDBtn.addEventListener("click", uploadToGDrive);
+sendOutlookBtn.addEventListener("click", sendWithOutlook);
 window.addEventListener("resize", drawOverlay);
 
 // Init
