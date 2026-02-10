@@ -1,4 +1,4 @@
-const CACHE_VERSION = "ricoh-scanner-v7";
+const CACHE_VERSION = "ricoh-scanner-v8";
 const PRECACHE = [
   "./",
   "./index.html",
@@ -10,7 +10,7 @@ const PRECACHE = [
 ];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE_VERSION).then(c => c.addAll(PRECACHE)));
+  event.waitUntil(caches.open(CACHE_VERSION).then(cache => cache.addAll(PRECACHE)));
   self.skipWaiting();
 });
 
@@ -27,22 +27,23 @@ self.addEventListener("fetch", event => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // CDN's altijd netwerk-first:
   if (
     url.hostname.includes("jsdelivr.net") ||
     url.hostname.includes("unpkg.com") ||
-    url.hostname.includes("cdnjs.cloudflare.com")
+    url.hostname.includes("cdnjs.com")
   ) return;
 
   event.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;
-      return fetch(req).then(resp =>
-        caches.open(CACHE_VERSION).then(cache => {
-          try { cache.put(req, resp.clone()); } catch {}
-          return resp;
-        })
-      ).catch(() => caches.match("./index.html"));
+      return fetch(req)
+        .then(resp =>
+          caches.open(CACHE_VERSION).then(c => {
+            try { c.put(req, resp.clone()); } catch {}
+            return resp;
+          })
+        )
+        .catch(() => caches.match("./index.html"));
     })
   );
 });
