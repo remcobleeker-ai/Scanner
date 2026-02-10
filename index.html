@@ -6,12 +6,7 @@
   <meta name="theme-color" content="#CE0000" />
   <title>RICOH Web Scanner Pro</title>
 
-  <!-- PWA -->
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
-
-  <!-- Styles -->
   <link rel="stylesheet" href="styles.css">
 
   <script>
@@ -31,6 +26,9 @@
     <input id="playerName" type="text" class="input" placeholder="Naam speler (optioneel)" autocomplete="off" />
 
     <button id="startScan">Start scannen</button>
+    <button id="lockBtn" class="secondary">Vergrendel speler</button>
+    <button id="toggleBtn" class="secondary">Wissel LAN ↔ Wi‑Fi</button>
+
     <button id="resetBtn" class="secondary">Reset</button>
     <button id="flashToggle" class="secondary">Zaklamp: uit</button>
 
@@ -67,12 +65,11 @@
     </table>
   </div>
 
-  <!-- LIBS via CDN -->
+  <!-- Correcte script tags -->
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@0.12.1/dist/quagga.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
-  <!-- App logic -->
   <script src="scanner.js"></script>
+
 </body>
 </html>
